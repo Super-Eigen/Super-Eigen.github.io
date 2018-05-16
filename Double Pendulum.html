@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Double Pendulum</title>
+    </head>  
+    <body style="font-family:sans-serif; 
+				font-size:15px;
+				width:1000;
+				margin-left:auto;
+				margin-right:auto;
+				background-color:#ffffff;"> 
+		<h1 style="font-size:24px; 
+				text-align:center;
+				color:#000000;">
+			Double Pendulum
+		</h1>
+		
+		<div style="text-align:center;">
+			<input type="button" value="Start/Reset" onclick="reset();">
+			&emsp; &emsp; 
+			<input type="button" value="Clear Trails" onclick="clearTrails();">
+		</div> <br>
+		
+		<div style="width:1000px; margin-left:auto; margin-right:auto; position:relative;">
+			<canvas style="position:absolute;" id="trailCanvas" width="900" height="900"></canvas>
+			<canvas style="position:absolute; border:1px solid #000000;" id="theCanvas" width="900" height="900"></canvas>
+			<canvas style="position:absolute; border:1px solid #000000;" id="theCanvas2" width="900" height="900"></canvas>
+			<canvas style="position:relative; border:1px solid #000000;" id="originCanvas" width="900" height="900"></canvas>
+			
+		</div>
+		
+		<script>
+			var theCanvas = document.getElementById("theCanvas");
+			var theContext = theCanvas.getContext("2d");
+			var rod1 = theCanvas.getContext("2d");
+			
+			var theCanvas2 = document.getElementById("theCanvas2");
+			var theContext2 = theCanvas2.getContext("2d");
+			var rod2 = theCanvas2.getContext("2d");
+			
+			var trailCanvas = document.getElementById("trailCanvas");	// Trail for the second bob (motion is more interesting)
+			var trailContext = trailCanvas.getContext("2d");
+			
+			var timer, m1, m2, mu;
+			var r1, theta1, x1, y1;
+			var r2, theta2, x2, y2;
+			var omega1, omega2;
+			var g = 9.8;	// gravitational acceleration in m/s^2
+			var dt = 0.001;	// time step in seconds
+			var centerX = theCanvas.width/2;
+			var centerY = theCanvas.height/2;
+			var xScale = theCanvas.width;
+			var yScale = theCanvas.height;
+			
+			// The origin-main pivot point
+			var originCanvas = document.getElementById("originCanvas");
+			var origin = originCanvas.getContext("2d"); 
+			origin.beginPath();
+			origin.arc(centerX, centerY, 5, 0, 2*Math.PI);	// Does not need to be in this function as it does not change
+			origin.fillStyle = "#000000"; 
+			origin.fill();
+			
+			function reset() {
+				window.clearTimeout(timer); // Clears the timer so moveProjectile cannot be called multiple times
+				m1 = 1;	// Mass of 1st bob
+				m2 = 1; // Mass of 2nd bob
+				mu = 1 + m1/m2; // Used later for computing angular accelerations
+				
+				r1 = 0.5;	// Length of 1st rod in m
+				theta1 = Math.PI/2;	// First angle (radians)
+				x1 = r1*Math.sin(theta1);
+				y1 = -r1*Math.cos(theta1);
+				omega1 = 0;
+				
+				r2 = 0.5;	// Length of 2nd rod in m
+				theta2 = Math.PI/2;	// Second angle 
+				x2 = r2*Math.sin(theta2) + x1;
+				y2 = -r2*Math.cos(theta2) + y1;
+				omega2 = 0;
+				
+				moveProjectile();
+			}
+			
+			function clearTrails() {
+				trailContext.clearRect(0, 0, xScale, yScale);
+			}
+			
+			function drawProjectile(){
+				theContext.clearRect(0, 0, xScale, yScale);
+				theContext.beginPath();
+				theContext2.clearRect(0, 0, xScale, yScale);
+				theContext2.beginPath();
+				
+				var metersPerPixel = 2.2 / (yScale); // 2.2 is used so the system fits the canvas appropriately
+				var pixelX = centerX + x1/metersPerPixel;
+				var pixelY = centerY - y1/metersPerPixel;
+				var pixelX2 = centerX + x2/metersPerPixel;
+				var pixelY2 = centerY - y2/metersPerPixel;
+				
+				theContext.arc(pixelX, pixelY, 20, 0, 2*Math.PI); 
+				theContext2.arc(pixelX2, pixelY2, 20, 0, 2*Math.PI);
+				trailContext.fillRect(pixelX2-0.5, pixelY2-0.5, 1, 1);
+				
+				var theGradient = theContext.createRadialGradient(pixelX-1, pixelY-2, 1, pixelX, pixelY, 20);
+				theGradient.addColorStop(0, "#f0f080"); // Inside color (RGB scale in hexadecimal)
+				theGradient.addColorStop(1, "#80f080"); // Outside color
+				theContext.fillStyle = theGradient; 
+				theContext.fill(); 
+				
+				var theGradient2 = theContext2.createRadialGradient(pixelX2-1, pixelY2-2, 1, pixelX2, pixelY2, 20);
+				theGradient2.addColorStop(0, "#f04060"); 
+				theGradient2.addColorStop(1, "#6040f0");
+				theContext2.fillStyle = theGradient2; 
+				trailContext.fillStyle = "#0040ff"; 
+				theContext2.fill(); 
+				
+				rod1.moveTo(centerX, centerY);
+				rod1.lineTo(pixelX, pixelY);
+				rod1.stroke();
+				
+				rod2.moveTo(pixelX, pixelY);
+				rod2.lineTo(pixelX2, pixelY2);
+				rod2.stroke();
+			}
+			
+			function moveProjectile() {
+				// Several expressions used to make the equations for the torques more concise
+				var s1 = Math.sin(theta1);
+				var c1 = Math.cos(theta1);
+				var s2 = Math.sin(theta2);
+				var c12 = Math.cos(theta1 - theta2);
+				var s12 = Math.sin(theta1 - theta2);
+				// The angular accellerations can be found from the lagrange equations for theta1 and theta2
+				var alpha1 = (g*(s2*c12 - mu*s1) - (r2*omega2**2 + r1*omega1**2*c12)*s12 ) / (r1*(mu - c12**2)); // Defined above
+				var alpha2 = (g*mu * (s1*c12 - s2) + (mu*r1*omega1**2 + r2*omega2**2*c12)*s12) / (r2*(mu - c12**2)); // Defined above
+
+				// Mid-quantities (as we are using the Euler-Richardson Algorithm)
+				var thetaMid1 = theta1 + omega1*0.5*dt;
+				var omegaMid1 = omega1 + alpha1*0.5*dt;
+				var thetaMid2 = theta2 + omega2*0.5*dt;
+				var omegaMid2 = omega2 + alpha2*0.5*dt;
+				// The alphaMids take the same form as those above except omegaMid values are used
+				var alphaMid1 = (g*(s2*c12 - mu*s1) - (r2*omegaMid2**2 + r1*omegaMid1**2*c12)*s12 ) / (r1*(mu - c12**2));
+				var alphaMid2 = (g*mu * (s1*c12 - s2) + (mu*r1*omegaMid1**2 + r2*omegaMid2**2*c12)*s12) / (r2*(mu - c12**2));
+				
+				// For the first pendulum
+				theta1 += omegaMid1 * dt;
+				x1 = r1*Math.sin(theta1);
+				y1 = -r1*Math.cos(theta1);
+				omega1 += alphaMid1 * dt;
+				
+				// For the second pendulum
+				theta2 += omegaMid2 * dt;
+				x2 = r2*Math.sin(theta2) + x1;
+				y2 = -r2*Math.cos(theta2) + y1;
+				omega2 += alphaMid2 * dt;
+				
+				drawProjectile();
+				timer = window.setTimeout(moveProjectile, 1000/1000);
+			}
+			
+		</script>
+		
+		<p style="width:900px; margin-left:auto; margin-right:auto;"> 
+		<a href="file:///C:/Users/kj_ra/Desktop/html5/Double%20Pendulum%20Math.html">Lagrangian mechanics behind the double pendulum.</a>
+		</p>
+		
+	</body>
+</html>
